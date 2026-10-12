@@ -1,5 +1,6 @@
 /* eslint-disable no-console -- Command-line gate and compact verdict. */
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -89,6 +90,14 @@ const graph = await madge(files.map(file => join(source, file)), {
   excludeRegExp: [excluded],
 })
 report.cycles = graph.circular()
+// knip's nuxt plugin loads playground/nuxt/nuxt.config.ts, whose tsconfig extends the
+// generated .nuxt/tsconfig.json. On a fresh clone (and in CI's test job) it does not exist
+// and knip exits 2 without a report — prepare it first, like check-play builds its inputs.
+if (!existsSync(join(root, 'playground/nuxt/.nuxt/tsconfig.json'))) {
+  const prepare = spawnSync('pnpm', ['--filter', 'play', 'exec', 'nuxi', 'prepare'], { cwd: root, encoding: 'utf8' })
+  if (prepare.status !== 0)
+    report.errors.push(`nuxi prepare for playground failed: ${(prepare.stderr || prepare.stdout).slice(-400)}`)
+}
 const knip = spawnSync('pnpm', [
   'exec',
   'knip',
